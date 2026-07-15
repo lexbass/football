@@ -1,71 +1,41 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import requests
 
-# 1. Page Configuration
-st.set_page_config(page_title="Transfermarkt Height Analyzer", layout="wide")
+# 1. Page Configuration (Must remain the first active Streamlit line)
+st.set_page_config(page_title="Footballer Height Analyzer", layout="wide")
 st.title("⚽ Comprehensive Footballer Height Visualization")
-st.markdown("Select and compare thousands of professional football players side-by-side using the Transfermarkt Registry.")
+st.markdown("Select and compare thousands of professional football players side-by-side using your uploaded database.")
 
-# 2. Optimized Reliable Global Database Loader
+# 2. Optimized Reliable Local Database Loader
 @st.cache_data(ttl=86400) # Cache for 24 hours so your app loads instantly
 def load_all_players():
-    # Direct access to the flat structural tracking file in the salimt repository
-    url = "https://githubusercontent.com"
+    import json
+    import os
     
+    file_path = "players.json"
+    
+    # Check if the dataset is present in the repository root directory
+    if not os.path.exists(file_path):
+        st.error("Missing 'players.json' file! Please ensure you uploaded it to the root of your GitHub repository.")
+        return pd.DataFrame()
+        
     try:
-        # Resolve network stream blockers by adding custom user-agent headers to the fetch request
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        response = requests.get(url, headers=headers, timeout=15)
-        
-        # Open data byte stream cleanly via pandas storage engine
-        import io
-        raw_df = pd.read_parquet(io.BytesIO(response.content))
-        
-        # Build clean data structure schema
-        clean_df = pd.DataFrame()
-        clean_df["Name"] = raw_df["name"] if "name" in raw_df.columns else raw_df["player_name"]
-        clean_df["Country"] = raw_df["country_of_citizenship"] if "country_of_citizenship" in raw_df.columns else "Unknown"
-        clean_df["Position"] = raw_df["primary_position"] if "primary_position" in raw_df.columns else "Unknown"
-        
-        # Standardize height numbers
-        if "height_in_cm" in raw_df.columns:
-            clean_df["Height (m)"] = raw_df["height_in_cm"] / 100.0
-        else:
-            clean_df["Height (m)"] = raw_df["height"] / 100.0 if raw_df["height"].max() > 10 else raw_df["height"]
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
             
-        return clean_df.dropna(subset=["Name", "Height (m)"])
+        df = pd.DataFrame(data)
         
-    except Exception:
-        # If GitHub completely blocks binary parquet traffic to your cloud workspace, 
-        # this alternate endpoint reads the complete parsed player metadata registry flat-file
-        try:
-            alt_url = "https://githubusercontent.com"
-            alt_res = requests.get(alt_url, timeout=15)
-            parsed_players = []
-            current_country = "Unknown"
-            
-            for line in alt_res.text.split("\n"):
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                if line.startswith('='):
-                    current_country = line.replace('=', '').strip()
-                    continue
-                parts = [p.strip() for p in line.split(',')]
-                if len(parts) >= 3:
-                    if 'm' in parts[2]:
-                        parsed_players.append({
-                            "Name": parts[0],
-                            "Country": current_country,
-                            "Position": parts[1].upper(),
-                            "Height (m)": float(parts[2].replace('m', '').strip())
-                        })
-            return pd.DataFrame(parsed_players)
-        except Exception as err:
-            st.error(f"Critical Connection Block: {err}")
-            return pd.DataFrame()
+        # Standardize position classifications to match chart code requirements
+        pos_map = {'G': 'Goalkeeper', 'GK': 'Goalkeeper', 'D': 'Defender', 
+                   'DF': 'Defender', 'M': 'Midfielder', 'MF': 'Midfielder', 
+                   'F': 'Forward', 'FW': 'Forward'}
+        df["Position"] = df["Position"].map(pos_map).fillna(df["Position"])
+        df = df.rename(columns={"Height": "Height (m)"})
+        return df
+    except Exception as e:
+        st.error(f"Error reading local 'players.json' file: {e}")
+        return pd.DataFrame()
 
 df = load_all_players()
 
@@ -77,7 +47,7 @@ def meters_to_ft_in(m):
     return f"{feet}' {inches}\""
 
 if df.empty:
-    st.error("Roster parsing matrix returned blank views. Verify database paths.")
+    st.info("Upload your downloaded 'players.json' file to the root of your GitHub repository to initialize the app panels.")
 else:
     # 3. Sidebar Selection Panel for broad country filters
     st.sidebar.header("Global Roster Filters")
@@ -85,7 +55,7 @@ else:
     selected_countries = st.sidebar.multiselect(
         "Active Nations in Database Search:",
         options=all_countries,
-        default=all_countries[:5] # Keeps dropdown selection responsive
+        default=all_countries[:3] # Keeps dropdown selection responsive on startup
     )
 
     # Filter main dataset to match active countries
