@@ -8,7 +8,7 @@ st.title("⚽ Comprehensive Footballer Height Visualization")
 st.markdown("Select and compare thousands of professional football players side-by-side using your uploaded database.")
 
 # 2. Optimized Reliable Local Database Loader
-@st.cache_data(ttl=86400) # Cache for 24 hours so your app loads instantly
+#@st.cache_data(ttl=86400) # Cache for 24 hours so your app loads instantly
 def load_all_players():
     import json
     import os
