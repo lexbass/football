@@ -1,116 +1,168 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import requests
 
-# 1. Page Setup
-st.set_page_config(page_title="Football Player Height Comparison", layout="wide")
-st.title("🧍‍♂️ Head-to-Head Footballer Height Comparison")
-st.markdown("Select specific professional football players to visualize their heights side-by-side.")
+# 1. Page Configuration
+st.set_page_config(page_title="European Footballer Height Tracker", layout="wide")
+st.title("⚽ Professional Footballer Height Visualization")
+st.markdown("Compare and analyze comprehensive rosters across top European professional football leagues.")
 
-# 2. Roster Dataset
-@st.cache_data
-def load_player_data():
-    raw_data = [
-        # France
+# 2. Automated Deep Data Scraper via GitHub REST API
+@st.cache_data(ttl=86400) # Cache the dataset for 24 hours to prevent API rate limits
+def load_all_european_players():
+    # Target the API endpoint for the 'europe' folder structure
+    api_url = "https://github.com"
+    parsed_players = []
+    
+    try:
+        # Step A: Request a registry of all sub-directories (countries)
+        response = requests.get(api_url)
+        if response.status_code != 200:
+            st.error(f"GitHub API Error: {response.status_code}. Using emergency backup dataset.")
+            return get_backup_dataset()
+            
+        items = response.json()
+        country_folders = [item["name"] for item in items if item["type"] == "dir"]
+        
+        # Step B: Loop through every found national folder dynamically
+        for country in country_folders:
+            # Check for the two common filenames used across this repository
+            for filename in ["squads.txt", "players.txt"]:
+                raw_url = f"https://githubusercontent.com{country}/{filename}"
+                file_res = requests.get(raw_url)
+                
+                if file_res.status_code == 200:
+                    lines = file_res.text.split("\n")
+                    for line in lines:
+                        line = line.strip()
+                        if not line or line.startswith('=') or line.startswith('#'):
+                            continue
+                        
+                        # Process comma-separated tokens: Name, Position, Height, Birthdate
+                        parts = [p.strip() for p in line.split(',')]
+                        if len(parts) >= 3:
+                            name = parts[0]
+                            pos_tag = parts[1].upper()
+                            height_str = parts[2]
+                            
+                            # Standardize shorthand position annotations
+                            pos_map = {'G': 'Goalkeeper', 'GK': 'Goalkeeper', 'D': 'Defender', 
+                                       'DF': 'Defender', 'M': 'Midfielder', 'MF': 'Midfielder', 
+                                       'F': 'Forward', 'FW': 'Forward'}
+                            position = pos_map.get(pos_tag, pos_tag)
+                            
+                            try:
+                                # Convert the text metric into a continuous numeric variable
+                                if 'm' in height_str:
+                                    height_val = float(height_str.replace('m', '').strip())
+                                    parsed_players.append({
+                                        "Name": name,
+                                        "Country": country.replace('-', ' ').title(),
+                                        "Position": position,
+                                        "Height (m)": height_val
+                                    })
+                            except ValueError:
+                                continue
+                    break # Break file loop if squads.txt or players.txt was successfully processed
+                    
+    except Exception as e:
+        st.error(f"Connection failure: {e}")
+        return get_backup_dataset()
+
+    if not parsed_players:
+        return get_backup_dataset()
+        
+    return pd.DataFrame(parsed_players)
+
+def get_backup_dataset():
+    # Emergency fallback array to ensure the app functions even if GitHub undergoes maintenance
+    fallback = [
         {"Name": "Eduardo Camavinga", "Country": "France", "Position": "Midfielder", "Height (m)": 1.82},
         {"Name": "Kylian Mbappé", "Country": "France", "Position": "Forward", "Height (m)": 1.78},
         {"Name": "Dayot Upamecano", "Country": "France", "Position": "Defender", "Height (m)": 1.88},
-        {"Name": "Benjamin Pavard", "Country": "France", "Position": "Defender", "Height (m)": 1.82},
-        {"Name": "Antoine Griezmann", "Country": "France", "Position": "Forward", "Height (m)": 1.75},
-        
-        # England
         {"Name": "Jude Bellingham", "Country": "England", "Position": "Midfielder", "Height (m)": 1.80},
         {"Name": "Jordan Pickford", "Country": "England", "Position": "Goalkeeper", "Height (m)": 1.85},
         {"Name": "Harry Kane", "Country": "England", "Position": "Forward", "Height (m)": 1.88},
-        {"Name": "Bukayo Saka", "Country": "England", "Position": "Forward", "Height (m)": 1.78},
-        {"Name": "Declan Rice", "Country": "England", "Position": "Midfielder", "Height (m)": 1.85},
-        
-        # Germany
         {"Name": "Manuel Neuer", "Country": "Germany", "Position": "Goalkeeper", "Height (m)": 1.93},
         {"Name": "Jamal Musiala", "Country": "Germany", "Position": "Midfielder", "Height (m)": 1.84},
-        {"Name": "Florian Wirtz", "Country": "Germany", "Position": "Midfielder", "Height (m)": 1.76},
-        {"Name": "Antonio Rüdiger", "Country": "Germany", "Position": "Defender", "Height (m)": 1.90},
-        
-        # Spain
         {"Name": "Rodri", "Country": "Spain", "Position": "Midfielder", "Height (m)": 1.91},
-        {"Name": "Lamine Yamal", "Country": "Spain", "Position": "Forward", "Height (m)": 1.78},
-        {"Name": "Pedri", "Country": "Spain", "Position": "Midfielder", "Height (m)": 1.74},
-        {"Name": "Dani Carvajal", "Country": "Spain", "Position": "Defender", "Height (m)": 1.73}
+        {"Name": "Lamine Yamal", "Country": "Spain", "Position": "Forward", "Height (m)": 1.78}
     ]
-    return pd.DataFrame(raw_data)
+    return pd.DataFrame(fallback)
 
-df = load_player_data()
+df = load_all_european_players()
 
-# 3. Dropdown Selection Panel
-st.sidebar.header("Comparison Settings")
+# 3. Custom Metric Converter Helper
+def meters_to_ft_in(m):
+    total_inches = m * 39.3701
+    feet = int(total_inches // 12)
+    inches = round(total_inches % 12)
+    return f"{feet}' {inches}\""
 
-# Multi-select dropdown to pick specific players by name
-all_players = sorted(df["Name"].unique())
-selected_players = st.sidebar.multiselect(
-    "Choose Players to Compare:",
-    options=all_players,
-    default=["Kylian Mbappé", "Manuel Neuer"] # Default preset to show off the visual immediately
-)
+# 4. Interactive Dropdown Selection (Side-by-Side View)
+st.header("🆚 Head-to-Head Player Comparison")
+st.markdown("Select any two players from the comprehensive European registry to compare their height profiles.")
 
-# Filter dataset to match only the names picked by the user
-comparison_df = df[df["Name"].isin(selected_players)]
+all_player_names = sorted(df["Name"].unique())
 
-if not comparison_df.empty:
-    
-    # 4. Helper math function to dynamically compute Feet and Inches labels
-    def meters_to_ft_in(m):
-        total_inches = m * 39.3701
-        feet = int(total_inches // 12)
-        inches = round(total_inches % 12)
-        return f"{feet}' {inches}\""
+select_col1, select_col2 = st.columns(2)
+with select_col1:
+    p1 = st.selectbox("Select Player 1", all_player_names, index=0)
+with select_col2:
+    p2 = st.selectbox("Select Player 2", all_player_names, index=min(1, len(all_player_names)-1))
 
-    # Inject clean text strings for chart tooltips and labels
-    comparison_df["Height Label"] = comparison_df["Height (m)"].apply(lambda x: f"{x:.2f}m ({meters_to_ft_in(x)})")
-    comparison_df["Display Name"] = comparison_df["Name"] + "<br>" + comparison_df["Height Label"]
+compare_df = df[df["Name"].isin([p1, p2])].copy()
 
-    st.subheader("📊 Side-by-Side Height Comparison")
+if not compare_df.empty:
+    compare_df["Height Label"] = compare_df["Height (m)"].apply(lambda x: f"{x:.2f}m ({meters_to_ft_in(x)})")
+    compare_df["Display Name"] = compare_df["Name"] + "<br>" + compare_df["Height Label"]
 
-    # 5. Build the visual profile block chart
     fig = px.bar(
-        comparison_df,
+        compare_df,
         x="Display Name",
         y="Height (m)",
         color="Country",
-        text="Height Label", # Prints the height measurement text directly on top of the bars
-        labels={"Height (m)": "Height (Centimeters / Meters)", "Display Name": "Player"},
-        title="Who is taller?",
-        color_discrete_sequence=px.colors.qualitative.Pastel
+        text="Height Label",
+        labels={"Height (m)": "Height Range", "Display Name": "Roster Entity"},
+        title="Physical Scale Layout Model",
+        color_discrete_sequence=px.colors.qualitative.Set2
     )
 
-    # 6. Adjust the layout to mimic the reference image styling
     fig.update_traces(
-        width=0.4, # Thicker, distinct bars to look like human silhouette columns
-        textposition="outside", # Places the label values cleanly over the tops
-        textfont_size=14,
-        marker_line_color='rgb(8,48,107)',
+        width=0.35, 
+        textposition="outside", 
+        textfont_size=13,
         marker_line_width=1.5
     )
 
     fig.update_layout(
-        yaxis=dict(
-            range=[0, 2.20], # Fixed grid boundaries stretching up past 2 meters
-            dtick=0.10, # Draws scale marker grid lines every 10 centimeters
-            title="Height in Meters"
-        ),
-        xaxis=dict(
-            title=""
-        ),
-        showlegend=True,
-        height=600,
-        plot_bgcolor="rgba(0,0,0,0)" # Crystal clear, clean plot background
+        yaxis=dict(range=[0, 2.25], dtick=0.10, title="Height Baseline (Meters)"),
+        xaxis=dict(title=""),
+        plot_bgcolor="rgba(0,0,0,0)",
+        height=550
     )
-
-    # Render the chart asset to your Streamlit screen layout
     st.plotly_chart(fig, use_container_width=True)
 
-    # 7. Raw Stats breakdown matrix
-    st.subheader("📋 Compare Metrics Detail")
-    st.dataframe(comparison_df[["Name", "Country", "Position", "Height (m)"]], use_container_width=True)
+st.markdown("---")
 
-else:
-    st.info("Please select at least one football player from the sidebar menu to populate the visual comparison graph.")
+# 5. Global Roster Browser Panel
+st.header("🌍 League Explorer & Search Panel")
+
+st.sidebar.header("Roster Filtering Dashboard")
+league_countries = sorted(df["Country"].unique())
+selected_leagues = st.sidebar.multiselect("Select Leagues/Nations", league_countries, default=league_countries[:4])
+
+available_positions = sorted(df["Position"].unique())
+selected_positions = st.sidebar.multiselect("Select Positions", available_positions, default=available_positions)
+
+filtered_df = df[df["Country"].isin(selected_leagues) & df["Position"].isin(selected_positions)]
+
+col1, col2, col3 = st.columns(3)
+col1.metric("Total Match Records Found", len(filtered_df))
+col2.metric("Group Average Height", f"{filtered_df['Height (m)'].mean():.2f} m" if not filtered_df.empty else "N/A")
+col3.metric("Peak Target Benchmark", f"{filtered_df['Height (m)'].max():.2f} m" if not filtered_df.empty else "N/A")
+
+if not filtered_df.empty:
+    st.subheader("📋 Searchable Data Grid Registry")
+    st.dataframe(filtered_df.sort_values(by="Height (m)", ascending=False), use_container_width=True)
