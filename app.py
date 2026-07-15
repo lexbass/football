@@ -2,12 +2,12 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# 1. Page Configuration (Must stay at the absolute top)
+# 1. Page Setup
 st.set_page_config(page_title="Football Player Height Comparison", layout="wide")
-st.title("⚽ Professional Footballer Height Visualization")
-st.markdown("Compare and analyze professional football player heights across different nations.")
+st.title("🧍‍♂️ Head-to-Head Footballer Height Comparison")
+st.markdown("Select specific professional football players to visualize their heights side-by-side.")
 
-# 2. Local Dataset (Hardcoded to completely avoid GitHub connection errors)
+# 2. Roster Dataset
 @st.cache_data
 def load_player_data():
     raw_data = [
@@ -41,44 +41,76 @@ def load_player_data():
 
 df = load_player_data()
 
-# 3. Sidebar Filtering Panels
-st.sidebar.header("Filter Roster")
+# 3. Dropdown Selection Panel
+st.sidebar.header("Comparison Settings")
 
-countries = sorted(df["Country"].unique())
-selected_countries = st.sidebar.multiselect("Select Countries", countries, default=countries)
+# Multi-select dropdown to pick specific players by name
+all_players = sorted(df["Name"].unique())
+selected_players = st.sidebar.multiselect(
+    "Choose Players to Compare:",
+    options=all_players,
+    default=["Kylian Mbappé", "Manuel Neuer"] # Default preset to show off the visual immediately
+)
 
-positions = sorted(df["Position"].unique())
-selected_positions = st.sidebar.multiselect("Select Positions", positions, default=positions)
+# Filter dataset to match only the names picked by the user
+comparison_df = df[df["Name"].isin(selected_players)]
 
-# Dynamic filtering execution
-filtered_df = df[df["Country"].isin(selected_countries) & df["Position"].isin(selected_positions)]
-
-# 4. Summary Dash Tiles
-col1, col2, col3 = st.columns(3)
-col1.metric("Total Players Displayed", len(filtered_df))
-col2.metric("Average Height", f"{filtered_df['Height (m)'].mean():.2f} m" if not filtered_df.empty else "N/A")
-col3.metric("Tallest Player", f"{filtered_df['Height (m)'].max():.2f} m" if not filtered_df.empty else "N/A")
-
-if not filtered_df.empty:
-    # 5. Interactive Scatter Graph Layout
-    st.subheader("📊 Height Distributions and Trends")
+if not comparison_df.empty:
     
-    fig_scatter = px.scatter(
-        filtered_df,
-        x="Position",
+    # 4. Helper math function to dynamically compute Feet and Inches labels
+    def meters_to_ft_in(m):
+        total_inches = m * 39.3701
+        feet = int(total_inches // 12)
+        inches = round(total_inches % 12)
+        return f"{feet}' {inches}\""
+
+    # Inject clean text strings for chart tooltips and labels
+    comparison_df["Height Label"] = comparison_df["Height (m)"].apply(lambda x: f"{x:.2f}m ({meters_to_ft_in(x)})")
+    comparison_df["Display Name"] = comparison_df["Name"] + "<br>" + comparison_df["Height Label"]
+
+    st.subheader("📊 Side-by-Side Height Comparison")
+
+    # 5. Build the visual profile block chart
+    fig = px.bar(
+        comparison_df,
+        x="Display Name",
         y="Height (m)",
         color="Country",
-        hover_data=["Name"],
-        title="Player Heights Segmented by Position & Country",
-        labels={"Height (m)": "Height in Meters"},
-        height=500
+        text="Height Label", # Prints the height measurement text directly on top of the bars
+        labels={"Height (m)": "Height (Centimeters / Meters)", "Display Name": "Player"},
+        title="Who is taller?",
+        color_discrete_sequence=px.colors.qualitative.Pastel
     )
-    # Increase marker size for readability
-    fig_scatter.update_traces(marker=dict(size=12))
-    st.plotly_chart(fig_scatter, use_container_width=True)
-    
-    # 6. Searchable Matrix Table
-    st.subheader("📋 Searchable Data Registry")
-    st.dataframe(filtered_df.sort_values(by="Height (m)", ascending=False), use_container_width=True)
+
+    # 6. Adjust the layout to mimic the reference image styling
+    fig.update_traces(
+        width=0.4, # Thicker, distinct bars to look like human silhouette columns
+        textposition="outside", # Places the label values cleanly over the tops
+        textfont_size=14,
+        marker_line_color='rgb(8,48,107)',
+        marker_line_width=1.5
+    )
+
+    fig.update_layout(
+        yaxis=dict(
+            range=[0, 2.20], # Fixed grid boundaries stretching up past 2 meters
+            dtick=0.10, # Draws scale marker grid lines every 10 centimeters
+            title="Height in Meters"
+        ),
+        xaxis=dict(
+            title=""
+        ),
+        showlegend=True,
+        height=600,
+        plot_bgcolor="rgba(0,0,0,0)" # Crystal clear, clean plot background
+    )
+
+    # Render the chart asset to your Streamlit screen layout
+    st.plotly_chart(fig, use_container_width=True)
+
+    # 7. Raw Stats breakdown matrix
+    st.subheader("📋 Compare Metrics Detail")
+    st.dataframe(comparison_df[["Name", "Country", "Position", "Height (m)"]], use_container_width=True)
+
 else:
-    st.info("Select options inside the sidebar menu to view comparisons.")
+    st.info("Please select at least one football player from the sidebar menu to populate the visual comparison graph.")
