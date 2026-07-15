@@ -13,11 +13,11 @@ def load_all_players():
     import json
     import os
     
-    file_path = "players.json"
+    file_path = "players_json.json"
     
     # Check if the dataset is present in the repository root directory
     if not os.path.exists(file_path):
-        st.error("Missing 'players.json' file! Please ensure you uploaded it to the root of your GitHub repository.")
+        st.error("Missing 'players_json.json' file! Please ensure you uploaded it to the root of your GitHub repository.")
         return pd.DataFrame()
         
     try:
@@ -34,7 +34,7 @@ def load_all_players():
         df = df.rename(columns={"Height": "Height (m)"})
         return df
     except Exception as e:
-        st.error(f"Error reading local 'players.json' file: {e}")
+        st.error(f"Error reading local 'players_json.json' file: {e}")
         return pd.DataFrame()
 
 df = load_all_players()
@@ -47,7 +47,7 @@ def meters_to_ft_in(m):
     return f"{feet}' {inches}\""
 
 if df.empty:
-    st.info("Upload your downloaded 'players.json' file to the root of your GitHub repository to initialize the app panels.")
+    st.info("Upload your downloaded 'players_json.json' file to the root of your GitHub repository to initialize the app panels.")
 else:
     # 3. Sidebar Selection Panel for broad country filters
     st.sidebar.header("Global Roster Filters")
