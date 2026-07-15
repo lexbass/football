@@ -1,73 +1,56 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import requests
 
-# 1. Page Configuration
-st.set_page_config(page_title="European Footballer Height Tracker", layout="wide")
-st.title("⚽ Comprehensive Professional Footballer Height Visualization")
-st.markdown("Select and compare multiple professional football players across Europe side-by-side.")
+# 1. Page Configuration (Must remain the first active Streamlit line)
+st.set_page_config(page_title="Transfermarkt Height Analyzer", layout="wide")
+st.title("⚽ Comprehensive Footballer Height Visualization")
+st.markdown("Select and compare professional football players side-by-side using the Transfermarkt Datalake registry.")
 
-# 2. Automated Multi-Country Raw Data Loader
-@st.cache_data(ttl=86400) # Cache the results for 24 hours so your app loads instantly
-def load_all_european_players():
-    # These match the exact subfolder names in openfootball/players
-    countries = ["england", "france", "germany", "italy", "spain", "netherlands", "portugal"]
-    parsed_players = []
+# 2. Automated Transfermarkt Datalake Connector
+@st.cache_data(ttl=86400) # Cache dataset for 24 hours to ensure high dashboard speeds
+def load_transfermarkt_dataset():
+    # Targets the exact data lake partition file directly from the repo asset block
+    url = "https://github.com"
     
-    for country in countries:
-        # Step A: Each country has a specific squad file named 'squads.txt'
-        url = f"https://githubusercontent.com{country}/squads.txt"
-        try:
-            response = requests.get(url)
+    try:
+        # Pandas reads parquet structural data formats flawlessly over direct links
+        raw_df = pd.read_parquet(url)
+        
+        # Mapping/Renaming the data lake database columns to clean application terminology
+        # Expected core columns: name, primary_position, height_in_cm, country_of_citizenship
+        clean_df = pd.DataFrame()
+        clean_df["Name"] = raw_df["name"] if "name" in raw_df.columns else raw_df["player_name"]
+        clean_df["Country"] = raw_df["country_of_citizenship"] if "country_of_citizenship" in raw_df.columns else "Unknown"
+        clean_df["Position"] = raw_df["primary_position"] if "primary_position" in raw_df.columns else "Unknown"
+        
+        # Handle conversion from data lake centimeter tracking to meters
+        if "height_in_cm" in raw_df.columns:
+            clean_df["Height (m)"] = raw_df["height_in_cm"] / 100.0
+        elif "height" in raw_df.columns:
+            clean_df["Height (m)"] = raw_df["height"] / 100.0 if raw_df["height"].max() > 10 else raw_df["height"]
+        else:
+            clean_df["Height (m)"] = 1.80 # Fallback safety default value
             
-            # Step B: Fallback to alternative naming 'players.txt' if squads.txt isn't used
-            if response.status_code != 200:
-                url = f"https://githubusercontent.com{country}/players.txt"
-                response = requests.get(url)
-                
-            if response.status_code == 200:
-                lines = response.text.split("\n")
-                for line in lines:
-                    line = line.strip()
-                    # Skip blank lines and section headers
-                    if not line or line.startswith('=') or line.startswith('#'):
-                        continue
-                    
-                    # Target layout: Name, Position, Height, Birthdate
-                    # Example: Eduardo Camavinga, M, 1.82 m, b. 10 Nov 2002 @ Miconje
-                    parts = [p.strip() for p in line.split(',')]
-                    if len(parts) >= 3:
-                        name = parts[0]
-                        pos_tag = parts[1].upper()
-                        height_str = parts[2]
-                        
-                        # Clean up shorthand position keywords
-                        pos_map = {'G': 'Goalkeeper', 'GK': 'Goalkeeper', 'D': 'Defender', 
-                                   'DF': 'Defender', 'M': 'Midfielder', 'MF': 'Midfielder', 
-                                   'F': 'Forward', 'FW': 'Forward'}
-                        position = pos_map.get(pos_tag, pos_tag)
-                        
-                        try:
-                            # Isolate the float height decimal by stripping 'm'
-                            if 'm' in height_str:
-                                height_val = float(height_str.replace('m', '').strip())
-                                parsed_players.append({
-                                    "Name": name,
-                                    "Country": country.title(),
-                                    "Position": position,
-                                    "Height (m)": height_val
-                                })
-                        except ValueError:
-                            continue
-        except Exception:
-            continue
+        # Clean out any records with missing metadata or corrupted height listings
+        clean_df = clean_df.dropna(subset=["Name", "Height (m)"])
+        clean_df = clean_df[clean_df["Height (m)"] > 1.20] # Removes bad placeholder values
+        
+        return clean_df
+    except Exception as e:
+        st.error(f"Failed to access the Transfermarkt datalake file branch: {e}")
+        # Local emergency backup matrix if GitHub data lake path undergoes maintenance
+        fallback = [
+            {"Name": "Kylian Mbappé", "Country": "France", "Position": "Forward", "Height (m)": 1.78},
+            {"Name": "Harry Kane", "Country": "England", "Position": "Forward", "Height (m)": 1.88},
+            {"Name": "Erling Haaland", "Country": "Norway", "Position": "Forward", "Height (m)": 1.94},
+            {"Name": "Virgil van Dijk", "Country": "Netherlands", "Position": "Defender", "Height (m)": 1.93}
+        ]
+        return pd.DataFrame(fallback)
 
-    return pd.DataFrame(parsed_players)
+df = load_transfermarkt_dataset()
 
-df = load_all_european_players()
-
-# Helper conversion math formula
+# Helper conversion math formula to output standard feet/inches labels
 def meters_to_ft_in(m):
     total_inches = m * 39.3701
     feet = int(total_inches // 12)
@@ -75,34 +58,34 @@ def meters_to_ft_in(m):
     return f"{feet}' {inches}\""
 
 if df.empty:
-    st.error("Failed to fetch data from the openfootball repository. Please try rebooting the application cloud link.")
+    st.error("Roster parsing matrix returned blank views. Verify parquet data mapping configurations.")
 else:
-    # 3. Sidebar Selection Panel for grouping filters
-    st.sidebar.header("Global Roster Controls")
-    all_countries = sorted(df["Country"].unique())
+    # 3. Sidebar Selection Panel for broad country filters
+    st.sidebar.header("Global Roster Filters")
+    all_countries = sorted(df["Country"].dropna().unique())
     selected_countries = st.sidebar.multiselect(
-        "Filter Available Player Roster by Country:",
+        "Active Nations in Database Search:",
         options=all_countries,
-        default=all_countries
+        default=all_countries[:5] # Presets a few nations to keep charts responsive
     )
 
-    # Filter data matrix to match selected countries
+    # Filter main dataset to match active countries
     filtered_df = df[df["Country"].isin(selected_countries)]
 
-    # 4. Multi-Select Player Specific Selector Dashboard
+    # 4. Multi-Select Player Picker Dashboard 
     st.subheader("📊 Choose Multiple Competitors Side-by-Side")
     selectable_players = sorted(filtered_df["Name"].unique())
 
     selected_players = st.multiselect(
-        "Search and select multiple players by name to add them to your chart view:",
+        "Search and select multiple players by name to overlay on the chart below:",
         options=selectable_players,
-        default=selectable_players[:5] if len(selectable_players) >= 5 else selectable_players
+        default=selectable_players[:4] if len(selectable_players) >= 4 else selectable_players
     )
 
     comparison_df = filtered_df[filtered_df["Name"].isin(selected_players)].copy()
 
     if not comparison_df.empty:
-        # Build text labels to attach directly above the chart rows
+        # Build layout description parameters directly above the chart rows
         comparison_df["Height Label"] = comparison_df["Height (m)"].apply(lambda x: f"{x:.2f}m ({meters_to_ft_in(x)})")
         comparison_df["Display Name"] = comparison_df["Name"] + "<br>(" + comparison_df["Country"] + ")"
 
@@ -127,7 +110,7 @@ else:
 
         fig.update_layout(
             yaxis=dict(
-                range=[1.5, 2.15], # Keeps zoom bounds functional to trace relative height differences
+                range=[1.5, 2.15], # Precision zoom range settings to clearly show height changes
                 dtick=0.05, 
                 title="Height in Meters"
             ),
