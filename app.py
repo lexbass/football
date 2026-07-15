@@ -12,7 +12,7 @@ st.markdown("Compare and analyze professional football player heights across dif
 @st.cache_data
 def load_player_data():
     # Points to the actual player profile data repository, using the correct raw sub-domain
-    url = "https://githubusercontent.com"
+    url = "https://github.com/openfootball/players/tree/master/europe"
     
     try:
         response = requests.get(url)
