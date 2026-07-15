@@ -1,56 +1,75 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import requests
 
-# 1. Page Configuration (Must remain the first active Streamlit line)
+# 1. Page Configuration
 st.set_page_config(page_title="Transfermarkt Height Analyzer", layout="wide")
 st.title("⚽ Comprehensive Footballer Height Visualization")
-st.markdown("Select and compare professional football players side-by-side using the Transfermarkt Datalake registry.")
+st.markdown("Select and compare thousands of professional football players side-by-side using the Transfermarkt Registry.")
 
-# 2. Automated Transfermarkt Datalake Connector
-@st.cache_data(ttl=86400) # Cache dataset for 24 hours to ensure high dashboard speeds
-def load_transfermarkt_dataset():
-    # Targets the exact data lake partition file directly from the repo asset block
-    url = "https://github.com"
+# 2. Optimized Reliable Global Database Loader
+@st.cache_data(ttl=86400) # Cache for 24 hours so your app loads instantly
+def load_all_players():
+    # Direct access to the flat structural tracking file in the salimt repository
+    url = "https://githubusercontent.com"
     
     try:
-        # Pandas reads parquet structural data formats flawlessly over direct links
-        raw_df = pd.read_parquet(url)
+        # Resolve network stream blockers by adding custom user-agent headers to the fetch request
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        response = requests.get(url, headers=headers, timeout=15)
         
-        # Mapping/Renaming the data lake database columns to clean application terminology
-        # Expected core columns: name, primary_position, height_in_cm, country_of_citizenship
+        # Open data byte stream cleanly via pandas storage engine
+        import io
+        raw_df = pd.read_parquet(io.BytesIO(response.content))
+        
+        # Build clean data structure schema
         clean_df = pd.DataFrame()
         clean_df["Name"] = raw_df["name"] if "name" in raw_df.columns else raw_df["player_name"]
         clean_df["Country"] = raw_df["country_of_citizenship"] if "country_of_citizenship" in raw_df.columns else "Unknown"
         clean_df["Position"] = raw_df["primary_position"] if "primary_position" in raw_df.columns else "Unknown"
         
-        # Handle conversion from data lake centimeter tracking to meters
+        # Standardize height numbers
         if "height_in_cm" in raw_df.columns:
             clean_df["Height (m)"] = raw_df["height_in_cm"] / 100.0
-        elif "height" in raw_df.columns:
-            clean_df["Height (m)"] = raw_df["height"] / 100.0 if raw_df["height"].max() > 10 else raw_df["height"]
         else:
-            clean_df["Height (m)"] = 1.80 # Fallback safety default value
+            clean_df["Height (m)"] = raw_df["height"] / 100.0 if raw_df["height"].max() > 10 else raw_df["height"]
             
-        # Clean out any records with missing metadata or corrupted height listings
-        clean_df = clean_df.dropna(subset=["Name", "Height (m)"])
-        clean_df = clean_df[clean_df["Height (m)"] > 1.20] # Removes bad placeholder values
+        return clean_df.dropna(subset=["Name", "Height (m)"])
         
-        return clean_df
-    except Exception as e:
-        st.error(f"Failed to access the Transfermarkt datalake file branch: {e}")
-        # Local emergency backup matrix if GitHub data lake path undergoes maintenance
-        fallback = [
-            {"Name": "Kylian Mbappé", "Country": "France", "Position": "Forward", "Height (m)": 1.78},
-            {"Name": "Harry Kane", "Country": "England", "Position": "Forward", "Height (m)": 1.88},
-            {"Name": "Erling Haaland", "Country": "Norway", "Position": "Forward", "Height (m)": 1.94},
-            {"Name": "Virgil van Dijk", "Country": "Netherlands", "Position": "Defender", "Height (m)": 1.93}
-        ]
-        return pd.DataFrame(fallback)
+    except Exception:
+        # If GitHub completely blocks binary parquet traffic to your cloud workspace, 
+        # this alternate endpoint reads the complete parsed player metadata registry flat-file
+        try:
+            alt_url = "https://githubusercontent.com"
+            alt_res = requests.get(alt_url, timeout=15)
+            parsed_players = []
+            current_country = "Unknown"
+            
+            for line in alt_res.text.split("\n"):
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                if line.startswith('='):
+                    current_country = line.replace('=', '').strip()
+                    continue
+                parts = [p.strip() for p in line.split(',')]
+                if len(parts) >= 3:
+                    if 'm' in parts[2]:
+                        parsed_players.append({
+                            "Name": parts[0],
+                            "Country": current_country,
+                            "Position": parts[1].upper(),
+                            "Height (m)": float(parts[2].replace('m', '').strip())
+                        })
+            return pd.DataFrame(parsed_players)
+        except Exception as err:
+            st.error(f"Critical Connection Block: {err}")
+            return pd.DataFrame()
 
-df = load_transfermarkt_dataset()
+df = load_all_players()
 
-# Helper conversion math formula to output standard feet/inches labels
+# Helper standard imperial math conversion utility
 def meters_to_ft_in(m):
     total_inches = m * 39.3701
     feet = int(total_inches // 12)
@@ -58,7 +77,7 @@ def meters_to_ft_in(m):
     return f"{feet}' {inches}\""
 
 if df.empty:
-    st.error("Roster parsing matrix returned blank views. Verify parquet data mapping configurations.")
+    st.error("Roster parsing matrix returned blank views. Verify database paths.")
 else:
     # 3. Sidebar Selection Panel for broad country filters
     st.sidebar.header("Global Roster Filters")
@@ -66,7 +85,7 @@ else:
     selected_countries = st.sidebar.multiselect(
         "Active Nations in Database Search:",
         options=all_countries,
-        default=all_countries[:5] # Presets a few nations to keep charts responsive
+        default=all_countries[:5] # Keeps dropdown selection responsive
     )
 
     # Filter main dataset to match active countries
@@ -79,13 +98,12 @@ else:
     selected_players = st.multiselect(
         "Search and select multiple players by name to overlay on the chart below:",
         options=selectable_players,
-        default=selectable_players[:4] if len(selectable_players) >= 4 else selectable_players
+        default=selectable_players[:5] if len(selectable_players) >= 5 else selectable_players
     )
 
     comparison_df = filtered_df[filtered_df["Name"].isin(selected_players)].copy()
 
     if not comparison_df.empty:
-        # Build layout description parameters directly above the chart rows
         comparison_df["Height Label"] = comparison_df["Height (m)"].apply(lambda x: f"{x:.2f}m ({meters_to_ft_in(x)})")
         comparison_df["Display Name"] = comparison_df["Name"] + "<br>(" + comparison_df["Country"] + ")"
 
@@ -110,7 +128,7 @@ else:
 
         fig.update_layout(
             yaxis=dict(
-                range=[1.5, 2.15], # Precision zoom range settings to clearly show height changes
+                range=[1.5, 2.15], 
                 dtick=0.05, 
                 title="Height in Meters"
             ),
