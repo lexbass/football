@@ -81,8 +81,9 @@ else:
     # Dynamic metrics display
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Players Displayed", len(filtered_df))
-    col2.metric("Average Height", f"{filtered_df['Height (m)}'.mean():.2f} m" if not filtered_df.empty else "N/A")
-    col3.metric("Tallest Player", f"{filtered_df['Height (m)}'.max():.2f} m" if not filtered_df.empty else "N/A")
+    col2.metric("Average Height", f"{filtered_df['Height (m)'].mean():.2f} m" if not filtered_df.empty else "N/A")
+    col3.metric("Tallest Player", f"{filtered_df['Height (m)'].max():.2f} m" if not filtered_df.empty else "N/A")
+
 
     if not filtered_df.empty:
         st.subheader("📊 Height Distributions and Trends")
