@@ -11,7 +11,7 @@ st.markdown("Select and compare thousands of professional football players side-
 def load_all_players():
     import json
     import os
-    file_path = "players_live.json" # Targets your clean data file name
+    file_path = "players_final_v1.json" # Targets your clean data file name
     
     if not os.path.exists(file_path):
         st.error(f"Missing '{file_path}' file! Please ensure you uploaded it to your GitHub root folder.")
